@@ -1,0 +1,13 @@
+# Two clusters + one outlier
+# Cluster A
+0.0, 0.0
+0.1, 0.1
+0.2, 0.3
+0.0, 0.4
+# Cluster B
+5.0, 5.0
+5.1, 5.1
+4.8, 5.1
+5.3, 4.9
+# Noise
+10.0, 0.0

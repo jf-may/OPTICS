@@ -1,12 +1,21 @@
-CC = gcc
-CFLAGS = -std=c23 -Wall -Wextra -O2
+CC      = gcc
+CFLAGS  = -std=c11 -Wall -Wextra -Wpedantic \
+          -g -O1 \
+          -fsanitize=address,undefined
+
+SRC = helpers.c heap.c optics.c csv_parser.c main.c
+OBJ = $(SRC:.c=.o)
+BIN = optics
 
 .PHONY: all clean
 
-all: optics
+all: $(BIN)
 
-optics: optics.c
-	$(CC) $(CFLAGS) -o $@ $^
+$(BIN): $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f optics
+	rm -f $(OBJ) $(BIN)
