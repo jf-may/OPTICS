@@ -15,9 +15,15 @@ bool less(const Point *points,
           const double d2, const int idx2);
 
 /*
- * Euclidean distance between two points.
+ * euclidean_distance_sq
+ *
+ * Calculates the squared distance between two points.
+ *
+ * Bypassing the sqrt() calculation is critical for performance when evaluating
+ * thousands of candidate points inside leaf nodes.
+ *
  * Aborts if the points have different dimensionality.
  */
-double euclidean_distance(const Point *a, const Point *b);
+double euclidean_distance_sq(const Point *a, const Point *b);
 
 #endif

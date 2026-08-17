@@ -36,11 +36,29 @@ typedef struct
     double  reach_distance;
 } Point;
 
+/*
+ * ClusterOrdering
+ * ---------------
+ * The final output of the OPTICS algorithm, representing the hierarchical
+ * clustering structure as a set of parallel arrays.
+ *
+ * Fields
+ * ------
+ * ordering:
+ *     Array of point indices representing the sequence in which points were
+ *     processed. This sequence forms the x-axis of an OPTICS reachability plot.
+ * core:
+ *     Array of core distances for each point, ordered identically to the
+ *     'ordering' array.
+ * reach:
+ *     Array of reachability distances for each point, ordered identically to
+ *     the 'ordering' array. This forms the y-axis of a reachability plot.
+ */
 typedef struct
 {
     int *ordering;
     double *core;
     double *reach;
-} OpticsResult;
+} ClusterOrdering;
 
 #endif

@@ -1,4 +1,6 @@
 #include "optics.h"
+#include "helpers.h"
+#include "rtree.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -14,8 +16,6 @@
  *
  * Insertion-sort of a parallel (neigh_ids, distances) array by the OPTICS
  * ordering (ascending distance, ties broken by orig_idx).
- *
- * TODO: replace with a faster sort for large n.
  */
 static void sort_neighbors(const Point *points, int *neigh_ids,
                            double *distances, const int count)
@@ -42,31 +42,89 @@ static void sort_neighbors(const Point *points, int *neigh_ids,
 /*
  * get_neighbors
  *
- * Collect all points within epsilon of point p_idx (including p_idx itself at
- * distance 0), sort them by the OPTICS ordering, and store results in the
- * caller-supplied arrays.
+ * Performs an R-Tree range query to collect all points within 'epsilon' of
+ * point 'p_idx'. Results are sorted by OPTICS ordering rules and stored
+ * in the caller-supplied output arrays.
  *
- * Returns the number of neighbors found.
- *
- * TODO: replace brute-force O(n) scan with an R*-tree or kd-tree for O(log n).
+ * Returns the number of valid neighbors found.
  */
 static int get_neighbors(Point *points, const int size, const int p_idx,
-                         const double epsilon, int *neighbors_out,
-                         double *distances_out)
+                         const double epsilon, const RTreeNode *root,
+                         int *neighbors_out, double *distances_out)
 {
+    if (!root) return 0;
+
     Point *p = &points[p_idx];
     int count = 0;
+    double eps_sq = epsilon * epsilon;
 
-    for (int i = 0; i < size; i++)
+    int stack_capacity = 256;
+    const RTreeNode **stack = malloc(stack_capacity * sizeof(RTreeNode *));
+
+    if (!stack)
     {
-        double dist = euclidean_distance(p, &points[i]);
-        if (dist <= epsilon)
+        fprintf(stderr, "OPTICS Error: Initial stack allocation failed in "
+                        "get_neighbors.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    int top = 0;
+
+    // Stack[top] = root and then increment top by 1
+    stack[top++] = root;
+
+    while (top > 0)
+    {
+        // Decrease top by 1 and then node = stack[top]
+        const RTreeNode *node = stack[--top];
+
+        if (node->is_leaf)
         {
-            neighbors_out[count] = i;
-            distances_out[count] = dist;
-            count++;
+            for (int i = 0; i < node->count; i++)
+            {
+                int node_p_idx = node->point_indices[i];
+                double dist_sq = euclidean_distance_sq(p, &points[node_p_idx]);
+
+                if (dist_sq <= eps_sq)
+                {
+                    neighbors_out[count] = node_p_idx;
+                    distances_out[count] = sqrt(dist_sq);
+                    count++;
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < node->count; i++)
+            {
+                double box_dist_sq = min_dist_sq_point_box(p, &node->box[i]);
+
+                if (box_dist_sq <= eps_sq)
+                {
+                    if (top >= stack_capacity)
+                    {
+                        stack_capacity *= 2;
+                        const RTreeNode **new_stack = realloc(stack,
+                                                          stack_capacity *
+                                                          sizeof(RTreeNode *));
+
+                        if (!new_stack)
+                        {
+                            fprintf(stderr, "OPTICS Error: Stack reallocation "
+                                            "failed in get_neighbors.\n");
+                            free(stack);
+                            exit(EXIT_FAILURE);
+                        }
+                        stack = new_stack;
+                    }
+
+                    stack[top++] = node->children[i];
+                }
+            }
         }
     }
+
+    free(stack);
 
     sort_neighbors(points, neighbors_out, distances_out, count);
     return count;
@@ -79,18 +137,18 @@ static int get_neighbors(Point *points, const int size, const int p_idx,
 /*
  * compute_core_distance
  *
- * OPTICS definition: the smallest epsilon' such that N_{epsilon'}(p) >= min_pts.
- * Equivalently, the distance to the min_pts-th nearest neighbor (p counts as
+ * The distance to the min_pts-th nearest neighbor (p counts as
  * its own neighbor at distance 0).
  *
  * Returns INFINITY if p has fewer than min_pts neighbors within epsilon.
  */
-static double compute_core_distance(Point *points, const int size, const int p_idx,
-                                    const double epsilon, const int min_pts,
+static double compute_core_distance(Point *points, const int size,
+                                    const int p_idx, const double epsilon,
+                                    const int min_pts, const RTreeNode *root,
                                     int *neighbors_out, double *distances_out)
 {
-    int count = get_neighbors(points, size, p_idx, epsilon, neighbors_out,
-                              distances_out);
+    int count = get_neighbors(points, size, p_idx, epsilon, root,
+                              neighbors_out, distances_out);
     if (count < min_pts) return INFINITY;
     return distances_out[min_pts - 1];
 }
@@ -98,21 +156,21 @@ static double compute_core_distance(Point *points, const int size, const int p_i
 /*
  * update_seeds
  *
- * After processing center_idx as a core point, update the seed heap with
- * improved reachability distances for all unprocessed neighbors.
- *
- * OPTICS reachability rule:
- *   reach_dist(o, p) = max(core_dist(p), dist(p, o))
+ * After processing a core point, we examine all its neighbors. If a neighbor
+  * hasn't been processed yet, we calculate its reachability from this core
+  * point. If this new reachability is smaller than its current one, we update
+  * it and promote it in the priority queue.
  */
 static void update_seeds(Point *points, const int size, const int center_idx,
                          BinaryHeap *seeds, const double epsilon,
-                         int *neighbors, double *distances)
+                         const RTreeNode *root, int *neighbors,
+                         double *distances)
 {
     Point *center    = &points[center_idx];
     double core_dist = center->core_distance;
 
-    int count = get_neighbors(points, size, center_idx, epsilon, neighbors,
-                              distances);
+    int count = get_neighbors(points, size, center_idx, epsilon, root,
+                              neighbors, distances);
 
     for (int i = 0; i < count; i++)
     {
@@ -140,20 +198,16 @@ static void update_seeds(Point *points, const int size, const int center_idx,
  * Public API
  * ========================================================================= */
 
-OpticsResult run_optics(Point *points, const int size, const double epsilon,
-                        const int min_pts)
+ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
+                           const int min_pts)
 {
     if (!points || size < 1 || epsilon < 0.0 || min_pts < 1)
     {
-        fprintf(stderr, "run_optics: invalid input parameters\n");
+        fprintf(stderr, "OPTICS Error: Invalid input parameters provided.\n");
         exit(EXIT_FAILURE);
     }
 
-    /*
-     * Initialize points. Coords, dim, orig_idx and size come from csv parser
-     * or manually. TODO: The user should only give a coords array either
-     * through a csv or manually and we should get everything else.
-     */
+    /* Initialize points. */
     for (int i = 0; i < size; i++)
     {
         points[i].processed      = false;
@@ -161,24 +215,19 @@ OpticsResult run_optics(Point *points, const int size, const double epsilon,
         points[i].reach_distance = INFINITY;
     }
 
-    /*
-     * Initialize heap. Not needed yet but possible error point so we call it
-     * before allocating any more memory so we only have to think about freeing
-     * the heap and not everything else if something goes wrong.
-     */
+    /* Build the spatial index (R-Tree) for O(n log n) neighborhood queries. */
+    RTreeNode *rtree_root = build_rtree(points, size);
+
+    /* Initialize the priority queue */
     BinaryHeap seeds;
     heap_init(&seeds, points, size);
 
-    /*
-     * Allocate all the outputs (ordering, core_vals, reach_vals) and the
-     * intermediate arrays (neighbors, distances) and check for correct
-     * memory allocation.
-     */
-    int    *ordering  = (int    *)malloc((size_t)size * sizeof(int));
-    double *core_vals = (double *)malloc((size_t)size * sizeof(double));
+    /* Allocate memory for output and intermediate processing arrays */
+    int    *ordering   = (int    *)malloc((size_t)size * sizeof(int));
+    double *core_vals  = (double *)malloc((size_t)size * sizeof(double));
     double *reach_vals = (double *)malloc((size_t)size * sizeof(double));
-    int    *neighbors = (int    *)malloc((size_t)size * sizeof(int));
-    double *distances = (double *)malloc((size_t)size * sizeof(double));
+    int    *neighbors  = (int    *)malloc((size_t)size * sizeof(int));
+    double *distances  = (double *)malloc((size_t)size * sizeof(double));
 
     if (!ordering || !core_vals || !reach_vals || !neighbors || !distances)
     {
@@ -188,47 +237,36 @@ OpticsResult run_optics(Point *points, const int size, const double epsilon,
         free(neighbors);
         free(distances);
         heap_free(&seeds);
-        fprintf(stderr, "run_optics: out of memory\n");
+        free_rtree(rtree_root);
+
+        fprintf(stderr, "OPTICS Error: Out of memory during initialization.\n");
         exit(EXIT_FAILURE);
     }
 
     /* Index of processed points */
     int order_idx = 0;
 
-    /* For each unprocessed point i */
+    /* Main OPTICS iteration: for each unprocessed point i */
     for (int i = 0; i < size; i++)
     {
         if (points[i].processed) continue;
 
-        /*
-         * First pass: heap empty, no point processed yet. Compute everything
-         * and append to the order.
-         */
         Point *p    = &points[i];
         p->processed    = true;
         p->core_distance = compute_core_distance(points, size, i, epsilon, min_pts,
-                                                  neighbors, distances);
+                                                 rtree_root, neighbors, distances);
 
         ordering[order_idx]   = i;
         reach_vals[order_idx] = p->reach_distance;
         core_vals[order_idx]  = p->core_distance;
         order_idx++;
 
-        /*
-         * If the last point processed was a core point:
-         */
+        /* If the point processed is a core point, we expand the cluster */
         if (p->core_distance != INFINITY)
         {
-            /*
-             * Then populate the heap with its neighbors, sorted from closest
-             * to farthest.
-             */
             update_seeds(points, size, i, &seeds, epsilon, neighbors, distances);
 
-            /*
-             * As long as the heap has points, process them first, from closest
-             * to farthest.
-             */
+            /* Exhaust the priority queue */
             while (!heap_is_empty(&seeds))
             {
                 int    closest_idx = heap_extract_min(&seeds);
@@ -238,6 +276,7 @@ OpticsResult run_optics(Point *points, const int size, const double epsilon,
                 closest->core_distance = compute_core_distance(points, size,
                                                                closest_idx,
                                                                epsilon, min_pts,
+                                                               rtree_root,
                                                                neighbors,
                                                                distances);
 
@@ -247,14 +286,14 @@ OpticsResult run_optics(Point *points, const int size, const double epsilon,
                 order_idx++;
 
                 /*
-                 * If the last point processed was a core point, populate the
-                 * heap with its neighbors. TODO: I don't actually know how
-                 * this interacts with the previous points in the heap.
+                 * If the last point processed is also a core point, we find
+                 * its neighbors. If any neighbor has a shorter reachability
+                 * path, it its promoted.
                  */
                 if (closest->core_distance != INFINITY)
                 {
                     update_seeds(points, size, closest_idx, &seeds, epsilon,
-                                 neighbors, distances);
+                                 rtree_root, neighbors, distances);
                 }
             }
         }
@@ -263,8 +302,9 @@ OpticsResult run_optics(Point *points, const int size, const double epsilon,
     free(neighbors);
     free(distances);
     heap_free(&seeds);
+    free_rtree(rtree_root);
 
-    OpticsResult result;
+    ClusterOrdering result;
     result.ordering = ordering;
     result.reach    = reach_vals;
     result.core     = core_vals;
@@ -272,7 +312,7 @@ OpticsResult run_optics(Point *points, const int size, const double epsilon,
     return result;
 }
 
-void free_optics_result(OpticsResult *res)
+void free_cluster_ordering(ClusterOrdering *res)
 {
     if (!res) return;
 

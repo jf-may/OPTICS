@@ -15,7 +15,7 @@ bool less(const Point *points,
     return points[idx1].orig_idx < points[idx2].orig_idx;
 }
 
-double euclidean_distance(const Point *a, const Point *b)
+double euclidean_distance_sq(const Point *a, const Point *b)
 {
     if (a->dim != b->dim)
     {
@@ -24,11 +24,11 @@ double euclidean_distance(const Point *a, const Point *b)
         exit(EXIT_FAILURE);
     }
 
-    double sum = 0.0;
-    for (int j = 0; j < a->dim; j++)
+    double dist_sq = 0.0;
+    for (int i = 0; i < a->dim; i++)
     {
-        double d = a->coords[j] - b->coords[j];
-        sum += d * d;
+        double diff = a->coords[i] - b->coords[i];
+        dist_sq += diff * diff;
     }
-    return sqrt(sum);
+    return dist_sq;
 }

@@ -23,7 +23,8 @@ typedef struct
  *
  * Parameters
  * ----------
- * filename : const char *    Input file path.
+ * filename : const char *
+ *     Input file path.
  *
  * Returns
  * -------

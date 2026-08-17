@@ -38,10 +38,10 @@ int main(int argc, char **argv)
     CsvData data = load_csv(filename);
     printf("Loaded %d points of dimension %d\n\n", data.n, data.dim);
 
-    OpticsResult res = run_optics(data.pts, data.n, 1.0, 2);
+    ClusterOrdering res = run_optics(data.pts, data.n, 1.0, 2);
     print_results(res.ordering, res.core, res.reach, data.n);
 
-    free_optics_result(&res);
+    free_cluster_ordering(&res);
     free_csv_data(&data);
 
     return EXIT_SUCCESS;
