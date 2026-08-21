@@ -13,10 +13,9 @@
  * sort_neighbors
  *
  * Insertion-sort of a parallel (neigh_ids, distances) array by the OPTICS
- * ordering (ascending distance, ties broken by orig_idx).
+ * ordering.
  */
-static void sort_neighbors(const Point *points, int *neigh_ids,
-                           double *distances, const int count)
+static void sort_neighbors(int *neigh_ids, double *distances, const int count)
 {
     for (int i = 1; i < count; i++)
     {
@@ -24,8 +23,7 @@ static void sort_neighbors(const Point *points, int *neigh_ids,
         double key_dist = distances[i];
         int    j        = i - 1;
 
-        while (j >= 0 &&
-               less(points, key_dist, key_id, distances[j], neigh_ids[j]))
+        while (j >= 0 && less(key_dist, key_id, distances[j], neigh_ids[j]))
         {
             neigh_ids[j + 1] = neigh_ids[j];
             distances[j + 1] = distances[j];
@@ -124,7 +122,7 @@ static int get_neighbors(Point *points, const int p_idx, const int dim,
 
     free(stack);
 
-    sort_neighbors(points, neighbors_out, distances_out, count);
+    sort_neighbors(neighbors_out, distances_out, count);
     return count;
 }
 
@@ -187,7 +185,7 @@ static void update_seeds(Point *points, const int core_idx, const int dim,
         else if (new_reach < n_point->reach_distance)
         {
             n_point->reach_distance = new_reach;
-            heap_decrease_key(seeds, n_idx, new_reach);
+            heap_decrease_key(seeds, n_idx);
         }
     }
 }

@@ -8,10 +8,9 @@
  *
  * Returns true when (d1, idx1) precedes (d2, idx2), where:
  *   1. Smaller distance comes first.
- *   2. On ties, smaller original-dataset index comes first.
+ *   2. On ties, smaller index comes first.
  */
-bool less(const Point *points,
-          const double d1, const int idx1,
+bool less(const double d1, const int idx1,
           const double d2, const int idx2);
 
 /*

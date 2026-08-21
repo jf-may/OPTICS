@@ -8,38 +8,36 @@
  * Internal helpers
  * ========================================================================= */
 
-static void heap_swap(BinaryHeap *h, int i, int j)
+static void heap_swap(BinaryHeap *heap, int i, int j)
 {
-    int p_i = h->arr[i];
-    int p_j = h->arr[j];
+    int p_i = heap->arr[i];
+    int p_j = heap->arr[j];
 
-    h->arr[i] = p_j;
-    h->arr[j] = p_i;
+    heap->arr[i] = p_j;
+    heap->arr[j] = p_i;
 
-    h->pos[p_i] = j;
-    h->pos[p_j] = i;
+    heap->pos[p_i] = j;
+    heap->pos[p_j] = i;
 }
 
 /*
  * heap_sift_up
  *
  * Restore the min-heap property upward from position i after an insertion or
- * key decrease.  Compares using reach_distance with orig_idx as the
- * tiebreaker (via the less() helper).
+ * key decrease. Compares using reach_distance.
  */
-static void heap_sift_up(BinaryHeap *h, int i)
+static void heap_sift_up(BinaryHeap *heap, int i)
 {
     while (i > 0)
     {
         int parent = (i - 1) / 2;
-        int ci = h->arr[i];
-        int pi = h->arr[parent];
+        int children_idx = heap->arr[i];
+        int parent_idx = heap->arr[parent];
 
-        if (less(h->points,
-                 h->points[ci].reach_distance, ci,
-                 h->points[pi].reach_distance, pi))
+        if (less(heap->points[children_idx].reach_distance, children_idx,
+                 heap->points[parent_idx].reach_distance, parent_idx))
         {
-            heap_swap(h, i, parent);
+            heap_swap(heap, i, parent);
             i = parent;
         }
         else
@@ -55,7 +53,7 @@ static void heap_sift_up(BinaryHeap *h, int i)
  * Restore the min-heap property downward from position i after the root is
  * replaced during extraction.
  */
-static void heap_sift_down(BinaryHeap *h, int i)
+static void heap_sift_down(BinaryHeap *heap, int i)
 {
     for (;;)
     {
@@ -63,29 +61,27 @@ static void heap_sift_down(BinaryHeap *h, int i)
         int left     = 2 * i + 1;
         int right    = 2 * i + 2;
 
-        if (left < h->size)
+        if (left < heap->size)
         {
-            int sl = h->arr[smallest];
-            int li = h->arr[left];
-            if (less(h->points,
-                     h->points[li].reach_distance, li,
-                     h->points[sl].reach_distance, sl))
+            int smallest_idx = heap->arr[smallest];
+            int left_idx = heap->arr[left];
+            if (less(heap->points[left_idx].reach_distance, left_idx,
+                     heap->points[smallest_idx].reach_distance, smallest_idx))
                 smallest = left;
         }
 
-        if (right < h->size)
+        if (right < heap->size)
         {
-            int sm = h->arr[smallest];
-            int ri = h->arr[right];
-            if (less(h->points,
-                     h->points[ri].reach_distance, ri,
-                     h->points[sm].reach_distance, sm))
+            int smallest_idx = heap->arr[smallest];
+            int right_idx = heap->arr[right];
+            if (less(heap->points[right_idx].reach_distance, right_idx,
+                     heap->points[smallest_idx].reach_distance, smallest_idx))
                 smallest = right;
         }
 
         if (smallest == i) break;
 
-        heap_swap(h, i, smallest);
+        heap_swap(heap, i, smallest);
         i = smallest;
     }
 }
@@ -94,87 +90,81 @@ static void heap_sift_down(BinaryHeap *h, int i)
  * Public API
  * ========================================================================= */
 
-void heap_init(BinaryHeap *h, Point *pts, int n)
+void heap_init(BinaryHeap *heap, Point *pts, int n)
 {
-    h->size     = 0;
-    h->capacity = n + 1;
-    h->points   = pts;
-    h->arr      = (int *)malloc(h->capacity * sizeof(int));
-    h->pos      = (int *)malloc((size_t)n * sizeof(int));
+    heap->size     = 0;
+    heap->capacity = n + 1;
+    heap->points   = pts;
+    heap->arr      = (int *)malloc(heap->capacity * sizeof(int));
+    heap->pos      = (int *)malloc((size_t)n * sizeof(int));
 
-    if (!h->arr || !h->pos)
+    if (!heap->arr || !heap->pos)
     {
-        free(h->arr);
-        free(h->pos);
+        free(heap->arr);
+        free(heap->pos);
         fprintf(stderr, "heap_init: out of memory\n");
         exit(EXIT_FAILURE);
     }
 
     for (int i = 0; i < n; i++)
-        h->pos[i] = -1;
+        heap->pos[i] = -1;
 }
 
-bool heap_is_empty(const BinaryHeap *h)
+bool heap_is_empty(const BinaryHeap *heap)
 {
-    return h->size == 0;
+    return heap->size == 0;
 }
 
 /*
  * heap_insert
  *
- * Add point p_idx to the heap.  The point's reach_distance must already be
- * set in h->points[p_idx] before calling.  p_idx must not already be present
- * (check h->pos[p_idx] == -1 beforehand).
+ * Add point p_idx to the heap.
  */
-void heap_insert(BinaryHeap *h, int p_idx)
+void heap_insert(BinaryHeap *heap, int p_idx)
 {
-    int i = h->size;
-    h->arr[i]     = p_idx;
-    h->pos[p_idx] = i;
-    h->size++;
-    heap_sift_up(h, i);
+    int i = heap->size;
+    heap->arr[i]     = p_idx;
+    heap->pos[p_idx] = i;
+    heap->size++;
+    heap_sift_up(heap, i);
 }
 
 /*
  * heap_decrease_key
  *
  * Update the heap after a point's reach_distance has been lowered.
- * The caller must write the new value to h->points[p_idx].reach_distance
- * BEFORE calling this function; new_reach is provided only for symmetry and
- * is not used directly here.
  */
-void heap_decrease_key(BinaryHeap *h, int p_idx, double new_reach)
+void heap_decrease_key(BinaryHeap *heap, int p_idx)
 {
-    (void)new_reach;          /* already committed to points[] by caller */
-    heap_sift_up(h, h->pos[p_idx]);
+    heap_sift_up(heap, heap->pos[p_idx]);
 }
 
 /*
  * heap_extract_min
  *
- * Remove and return the index of the point with the smallest reach_distance
- * (ties broken by orig_idx).  The returned point's pos entry is set to -1.
+ * Remove and return the index of the point with the smallest reach_distance.
+ * The returned point's pos entry is set to -1.
  */
-int heap_extract_min(BinaryHeap *h)
+int heap_extract_min(BinaryHeap *heap)
 {
-    int min_p = h->arr[0];
+    int min_p = heap->arr[0];
 
-    h->size--;
-    if (h->size > 0)
+    heap->size--;
+    if (heap->size > 0)
     {
-        h->arr[0]          = h->arr[h->size];
-        h->pos[h->arr[0]]  = 0;
-        heap_sift_down(h, 0);
+        heap->arr[0]            = heap->arr[heap->size];
+        heap->pos[heap->arr[0]] = 0;
+        heap_sift_down(heap, 0);
     }
 
-    h->pos[min_p] = -1;
+    heap->pos[min_p] = -1;
     return min_p;
 }
 
-void heap_free(BinaryHeap *h)
+void heap_free(BinaryHeap *heap)
 {
-    free(h->arr);
-    free(h->pos);
-    h->arr = NULL;
-    h->pos = NULL;
+    free(heap->arr);
+    free(heap->pos);
+    heap->arr = NULL;
+    heap->pos = NULL;
 }

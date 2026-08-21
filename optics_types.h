@@ -13,8 +13,6 @@
  * coords:
  *     Pointer to the first coordinate of this point inside the contiguous
  *     coordinate storage block.
- * orig_idx:
- *     Original position of this point in the input array.
  * processed:
  *     True once the point has been removed from the OPTICS seed structure and
  *     assigned to the final ordering.
@@ -27,7 +25,6 @@
 typedef struct
 {
     double *coords;
-    int     orig_idx;
     bool    processed;
     double  core_distance;
     double  reach_distance;

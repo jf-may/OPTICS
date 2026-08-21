@@ -1,21 +1,27 @@
 CC      = gcc
-CFLAGS  = -std=c11 -Wall -Wextra -Wpedantic \
-          -g -O1 \
-          -fsanitize=address,undefined
+MPICC 	= mpicc
+CFLAGS  = -std=c11 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L \
+          -g -O1 -fsanitize=address,undefined
+LDFLAGS = -lm
 
-SRC = helpers.c heap.c rtree.c optics.c csv_parser.c main.c
-OBJ = $(SRC:.c=.o)
-BIN = optics
+SHARED_OBJS = csv_parser.o helpers.o rtree.o heap.o optics.o
 
-.PHONY: all clean
+all: optics_seq optics_mpi
 
-all: $(BIN)
+optics_seq: main.o $(SHARED_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(BIN): $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ -lm
+optics_mpi: main_mpi.o doptics.o $(SHARED_OBJS)
+	$(MPICC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -c $< -o $@
+
+main_mpi.o: main_mpi.c
+	$(MPICC) $(CFLAGS) -c $< -o $@
+
+doptics.o: doptics.c
+	$(MPICC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(BIN)
+	rm -f *.o optics_seq optics_mpi

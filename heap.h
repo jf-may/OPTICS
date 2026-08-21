@@ -32,7 +32,7 @@ typedef struct
 void heap_init        (BinaryHeap *h, Point *pts, int n);
 bool heap_is_empty    (const BinaryHeap *h);
 void heap_insert      (BinaryHeap *h, int p_idx);
-void heap_decrease_key(BinaryHeap *h, int p_idx, double new_reach);
+void heap_decrease_key(BinaryHeap *h, int p_idx);
 int  heap_extract_min (BinaryHeap *h);
 void heap_free        (BinaryHeap *h);
 
