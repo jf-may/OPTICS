@@ -6,7 +6,7 @@
 
 int main(int argc, char **argv)
 {
-    if (argc < 3)
+    if (argc < 5)
     {
         fprintf(stderr, "Usage: %s <input_csv> <output_csv> <epsilon> "
                         "<min_pts>.\n", argv[0]);
