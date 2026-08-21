@@ -3,7 +3,7 @@ CFLAGS  = -std=c11 -Wall -Wextra -Wpedantic \
           -g -O1 \
           -fsanitize=address,undefined
 
-SRC = helpers.c heap.c optics.c csv_parser.c main.c
+SRC = helpers.c heap.c rtree.c optics.c csv_parser.c main.c
 OBJ = $(SRC:.c=.o)
 BIN = optics
 

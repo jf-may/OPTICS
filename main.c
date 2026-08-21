@@ -1,6 +1,6 @@
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "optics.h"
 #include "csv_parser.h"
@@ -26,22 +26,29 @@ static void print_results(const int *ordering, const double *core,
 
 int main(int argc, char **argv)
 {
-    if (argc < 2)
+    if (argc < 3)
     {
-        fprintf(stderr, "Usage ./optics {filename}.\n");
+        fprintf(stderr, "Usage ./optics {input filename} {output filename}.\n");
         return EXIT_FAILURE;
     }
 
-    char *filename = argv[1];
-    printf("\n=== CSV file: %s ===\n\n", filename);
+    char *input_filename = argv[1];
+    printf("\n=== Input CSV file: %s ===\n\n", input_filename);
 
-    CsvData data = load_csv(filename);
+    CsvData data = load_csv(input_filename);
     printf("Loaded %d points of dimension %d\n\n", data.n, data.dim);
 
-    ClusterOrdering res = run_optics(data.pts, data.n, 1.0, 2);
-    print_results(res.ordering, res.core, res.reach, data.n);
+    ClusterOrdering results = run_optics(data.pts, data.n, 5.0, 100);
 
-    free_cluster_ordering(&res);
+    char *output_filename = argv[2];
+    printf("\n=== Output CSV file: %s ===\n\n", output_filename);
+
+    /* For debugging */
+    print_results(results.ordering, results.core, results.reach, data.n);
+
+    save_cluster_ordering_to_csv(&results, data.n, output_filename);
+
+    free_cluster_ordering(&results);
     free_csv_data(&data);
 
     return EXIT_SUCCESS;

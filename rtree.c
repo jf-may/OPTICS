@@ -18,7 +18,7 @@
  */
 static void allocate_node_memory(RTreeNode *node, int dim)
 {
-    size_t total_doubles = (size_t)MAX_ENTRIES * 2 * (size_t)dim;
+    int total_doubles = MAX_ENTRIES * 2 * dim;
     node->coords_block = (double *)malloc(total_doubles * sizeof(double));
 
     if (!node->coords_block)
@@ -243,7 +243,7 @@ double min_dist_sq_point_box(const Point *p, const BoundingBox *b)
  */
 RTreeNode* build_rtree(Point *points, int size)
 {
-    if (!points || size <= 0)
+    if (!points || size < 1)
     {
         fprintf(stderr, "R-Tree Error: Invalid point array or size "
                         "provided.\n");
@@ -259,11 +259,7 @@ RTreeNode* build_rtree(Point *points, int size)
                         "array.\n");
         exit(EXIT_FAILURE);
     }
-
-    for (int i = 0; i < size; i++)
-    {
-        indices[i] = i;
-    }
+    for (int i = 0; i < size; i++) indices[i] = i;
 
     RTreeNode *root = build_rtree_recursive(points, size, dim, indices);
 

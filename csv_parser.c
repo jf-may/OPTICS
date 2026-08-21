@@ -8,41 +8,8 @@
 #include <stdlib.h>
 
 /* ============================================================================
- * CSV parser for OPTICS input
- * ============================================================================
- *
- * Supported format:
- *   - One point per line.
- *   - Comma-separated floating-point values (parsed with strtod).
- *   - Blank lines ignored.
- *   - Lines whose first non-space character is '#' are treated as comments.
- *   - Every data row must have the same number of columns.
- *
- * Not supported:
- *   - Quoted fields.
- *   - Mixed types (all values must be numeric).
- *
- * Memory layout:
- *   A single contiguous coords block is allocated for all n*dim values.
- *   Each Point's coords pointer is an offset into that block.
- *   free_points() releases both allocations.
- * ========================================================================= */
-
-/* -------------------------------------------------------------------------
  * Internal helpers
- * ---------------------------------------------------------------------- */
-
-/*
- * skip_spaces
- *
- * Return a pointer to the first non-whitespace character in s.
- */
-static char *skip_spaces(char *s)
-{
-    while (*s != '\0' && isspace((unsigned char)*s))
-        s++;
-    return s;
-}
+ * ========================================================================= */
 
 /*
  * parse_csv_numeric_row
@@ -51,21 +18,25 @@ static char *skip_spaces(char *s)
  *
  * Parameters
  * ----------
- * line   : null-terminated input line.
- * values : destination array; when NULL the fields are counted but not
- *          stored (first-pass mode).
- * out_dim: set to the number of fields parsed on success.
+ * line       : null-terminated input line.
+ * values_out : destination array; when NULL the fields are counted but not
+ *              stored (first-pass mode).
  *
  * Returns
  * -------
  *  > 0 : number of fields parsed (data row).
- *    0 : blank or comment line — caller should skip.
+ *    0 : blank or comment line.
  *   -1 : malformed row (empty field, trailing comma, unexpected character).
  */
-static int parse_csv_numeric_row(char *line, double *values, int *out_dim)
+static int parse_csv_numeric_row(const char *line, double *values_out)
 {
-    int   count = 0;
-    char *p     = skip_spaces(line);
+    int count     = 0;
+    const char *p = line;
+
+    while (*p != '\0' && isspace((unsigned char) *p))
+    {
+        p++;
+    }
 
     /* Blank or comment line */
     if (*p == '\0' || *p == '\n' || *p == '\r' || *p == '#')
@@ -83,8 +54,8 @@ static int parse_csv_numeric_row(char *line, double *values, int *out_dim)
         if (endptr == p)        /* no numeric token could be parsed */
             return -1;
 
-        if (values != NULL)
-            values[count] = val;
+        if (values_out != NULL)
+            values_out[count] = val;
         count++;
 
         /* Advance past optional whitespace after the number */
@@ -110,9 +81,6 @@ static int parse_csv_numeric_row(char *line, double *values, int *out_dim)
         }
     }
 
-    if (out_dim != NULL)
-        *out_dim = count;
-
     return count;
 }
 
@@ -120,7 +88,6 @@ static int parse_csv_numeric_row(char *line, double *values, int *out_dim)
  * csv_fatal
  *
  * Release all held resources, print an error message, and abort.
- * Passing NULL for any pointer is safe (free(NULL) is a no-op).
  */
 static void csv_fatal(FILE *f, char *line, double *coords_block,
                        Point *points, const char *msg, const char *filename)
@@ -133,16 +100,10 @@ static void csv_fatal(FILE *f, char *line, double *coords_block,
     exit(EXIT_FAILURE);
 }
 
-/* -------------------------------------------------------------------------
+/* ============================================================================
  * Public API
- * ---------------------------------------------------------------------- */
+ * ========================================================================= */
 
-/*
- * load_csv
- *
- * Two-pass loader: first pass counts rows and validates dimensionality
- * consistency; second pass populates the Point array.
- */
 CsvData load_csv(const char *filename)
 {
     FILE *f = fopen(filename, "r");
@@ -157,30 +118,24 @@ CsvData load_csv(const char *filename)
     int     n         = 0;
     int     dim       = -1;
 
-    /* ------------------------------------------------------------------
-     * First pass: count valid data rows and infer dimensionality.
-     * ---------------------------------------------------------------- */
+    /* First pass: count valid data rows and infer dimensionality. */
     while (getline(&line, &line_size, f) != -1)
     {
-        int row_dim = 0;
-        int cols    = parse_csv_numeric_row(line, NULL, &row_dim);
+        int cols    = parse_csv_numeric_row(line, NULL);
 
         if (cols == 0) continue;    /* blank or comment */
 
         if (cols < 0)
-            csv_fatal(f, line, NULL, NULL, "malformed row", filename);
-
-        if (row_dim <= 0)
-            csv_fatal(f, line, NULL, NULL, "empty data row", filename);
+            csv_fatal(f, line, NULL, NULL, "malformed or empty row", filename);
 
         if (dim == -1)
         {
-            dim = row_dim;          /* set from first valid row */
+            dim = cols;          /* set from first valid row */
         }
-        else if (row_dim != dim)
+        else if (cols != dim)
         {
-            csv_fatal(f, line, NULL, NULL,
-                      "inconsistent number of columns", filename);
+            csv_fatal(f, line, NULL, NULL, "inconsistent number of columns",
+                      filename);
         }
 
         n++;
@@ -191,25 +146,19 @@ CsvData load_csv(const char *filename)
 
     rewind(f);
 
-    /* ------------------------------------------------------------------
-     * Allocate storage: one contiguous coords block + point array.
-     * ---------------------------------------------------------------- */
-    double *coords_block = (double *)malloc((size_t)n * (size_t)dim *
-                                             sizeof(double));
-    Point  *points       = (Point  *)malloc((size_t)n * sizeof(Point));
+    /* Allocate storage: one contiguous coords block + point array.*/
+    double *coords_block = (double *)malloc((size_t)n * dim * sizeof(double));
+    Point *points        = (Point  *)malloc((size_t)n * sizeof(Point));
 
     if (!coords_block || !points)
         csv_fatal(f, line, coords_block, points, "out of memory", filename);
 
-    /* ------------------------------------------------------------------
-     * Second pass: populate the Point array.
-     * ---------------------------------------------------------------- */
+    /* Second pass: populate the Point array.*/
     int row = 0;
     while (getline(&line, &line_size, f) != -1)
     {
-        double *coords_row = coords_block + (size_t)row * (size_t)dim;
-        int     row_dim    = 0;
-        int     cols       = parse_csv_numeric_row(line, coords_row, &row_dim);
+        double *coords_row = coords_block + (size_t)row * dim;
+        int     cols       = parse_csv_numeric_row(line, coords_row);
 
         if (cols == 0) continue;
 
@@ -240,6 +189,4 @@ void free_csv_data(CsvData *data)
     /* The first point's coords pointer is the start of the contiguous block */
     free(data->pts[0].coords);
     free(data->pts);
-
-    data->pts = NULL;
 }

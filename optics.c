@@ -1,6 +1,4 @@
 #include "optics.h"
-#include "helpers.h"
-#include "rtree.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -48,9 +46,9 @@ static void sort_neighbors(const Point *points, int *neigh_ids,
  *
  * Returns the number of valid neighbors found.
  */
-static int get_neighbors(Point *points, const int size, const int p_idx,
-                         const double epsilon, const RTreeNode *root,
-                         int *neighbors_out, double *distances_out)
+static int get_neighbors(Point *points, const int p_idx, const double epsilon,
+                         const RTreeNode *root, int *neighbors_out,
+                         double *distances_out)
 {
     if (!root) return 0;
 
@@ -70,12 +68,10 @@ static int get_neighbors(Point *points, const int size, const int p_idx,
 
     int top = 0;
 
-    // Stack[top] = root and then increment top by 1
     stack[top++] = root;
 
     while (top > 0)
     {
-        // Decrease top by 1 and then node = stack[top]
         const RTreeNode *node = stack[--top];
 
         if (node->is_leaf)
@@ -105,8 +101,8 @@ static int get_neighbors(Point *points, const int size, const int p_idx,
                     {
                         stack_capacity *= 2;
                         const RTreeNode **new_stack = realloc(stack,
-                                                          stack_capacity *
-                                                          sizeof(RTreeNode *));
+                                                              stack_capacity *
+                                                              sizeof(RTreeNode *));
 
                         if (!new_stack)
                         {
@@ -142,13 +138,13 @@ static int get_neighbors(Point *points, const int size, const int p_idx,
  *
  * Returns INFINITY if p has fewer than min_pts neighbors within epsilon.
  */
-static double compute_core_distance(Point *points, const int size,
-                                    const int p_idx, const double epsilon,
-                                    const int min_pts, const RTreeNode *root,
-                                    int *neighbors_out, double *distances_out)
+static double compute_core_distance(Point *points, const int p_idx,
+                                    const double epsilon, const int min_pts,
+                                    const RTreeNode *root, int *neighbors_out,
+                                    double *distances_out)
 {
-    int count = get_neighbors(points, size, p_idx, epsilon, root,
-                              neighbors_out, distances_out);
+    int count = get_neighbors(points, p_idx, epsilon, root, neighbors_out,
+                              distances_out);
     if (count < min_pts) return INFINITY;
     return distances_out[min_pts - 1];
 }
@@ -157,20 +153,20 @@ static double compute_core_distance(Point *points, const int size,
  * update_seeds
  *
  * After processing a core point, we examine all its neighbors. If a neighbor
-  * hasn't been processed yet, we calculate its reachability from this core
-  * point. If this new reachability is smaller than its current one, we update
-  * it and promote it in the priority queue.
+ * hasn't been processed yet, we calculate its reachability from this core
+ * point. If this new reachability is smaller than its current one, we update
+ * it and promote it in the priority queue.
  */
-static void update_seeds(Point *points, const int size, const int center_idx,
+static void update_seeds(Point *points, const int core_idx,
                          BinaryHeap *seeds, const double epsilon,
                          const RTreeNode *root, int *neighbors,
                          double *distances)
 {
-    Point *center    = &points[center_idx];
-    double core_dist = center->core_distance;
+    Point *core      = &points[core_idx];
+    double core_dist = core->core_distance;
 
-    int count = get_neighbors(points, size, center_idx, epsilon, root,
-                              neighbors, distances);
+    int count = get_neighbors(points, core_idx, epsilon, root, neighbors,
+                              distances);
 
     for (int i = 0; i < count; i++)
     {
@@ -203,7 +199,8 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
 {
     if (!points || size < 1 || epsilon < 0.0 || min_pts < 1)
     {
-        fprintf(stderr, "OPTICS Error: Invalid input parameters provided.\n");
+        fprintf(stderr, "run_optics error: Invalid input parameters "
+                        "provided.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -222,49 +219,52 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
     BinaryHeap seeds;
     heap_init(&seeds, points, size);
 
-    /* Allocate memory for output and intermediate processing arrays */
+    /* Allocate memory for intermediate and output arrays */
+    int    *neighbors  = (int    *)malloc((size_t)size * sizeof(int));
+    double *distances  = (double *)malloc((size_t)size * sizeof(double));
     int    *ordering   = (int    *)malloc((size_t)size * sizeof(int));
     double *core_vals  = (double *)malloc((size_t)size * sizeof(double));
     double *reach_vals = (double *)malloc((size_t)size * sizeof(double));
-    int    *neighbors  = (int    *)malloc((size_t)size * sizeof(int));
-    double *distances  = (double *)malloc((size_t)size * sizeof(double));
 
-    if (!ordering || !core_vals || !reach_vals || !neighbors || !distances)
+    if (!neighbors || !distances || !ordering || !core_vals || !reach_vals)
     {
+        free(neighbors);
+        free(distances);
         free(ordering);
         free(core_vals);
         free(reach_vals);
-        free(neighbors);
-        free(distances);
-        heap_free(&seeds);
         free_rtree(rtree_root);
+        heap_free(&seeds);
 
-        fprintf(stderr, "OPTICS Error: Out of memory during initialization.\n");
+        fprintf(stderr, "run_optics error: Out of memory during array "
+                        "initialization.\n");
         exit(EXIT_FAILURE);
     }
 
     /* Index of processed points */
-    int order_idx = 0;
+    int ordering_idx = 0;
 
     /* Main OPTICS iteration: for each unprocessed point i */
     for (int i = 0; i < size; i++)
     {
         if (points[i].processed) continue;
 
-        Point *p    = &points[i];
-        p->processed    = true;
-        p->core_distance = compute_core_distance(points, size, i, epsilon, min_pts,
-                                                 rtree_root, neighbors, distances);
+        Point *p         = &points[i];
+        p->processed     = true;
+        p->core_distance = compute_core_distance(points, i, epsilon, min_pts,
+                                                 rtree_root, neighbors,
+                                                 distances);
 
-        ordering[order_idx]   = i;
-        reach_vals[order_idx] = p->reach_distance;
-        core_vals[order_idx]  = p->core_distance;
-        order_idx++;
+        ordering[ordering_idx]   = i;
+        reach_vals[ordering_idx] = p->reach_distance;
+        core_vals[ordering_idx]  = p->core_distance;
+        ordering_idx++;
 
         /* If the point processed is a core point, we expand the cluster */
         if (p->core_distance != INFINITY)
         {
-            update_seeds(points, size, i, &seeds, epsilon, neighbors, distances);
+            update_seeds(points, i, &seeds, epsilon, rtree_root, neighbors,
+                         distances);
 
             /* Exhaust the priority queue */
             while (!heap_is_empty(&seeds))
@@ -272,18 +272,19 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
                 int    closest_idx = heap_extract_min(&seeds);
                 Point *closest     = &points[closest_idx];
 
-                closest->processed    = true;
-                closest->core_distance = compute_core_distance(points, size,
+                closest->processed     = true;
+                closest->core_distance = compute_core_distance(points,
                                                                closest_idx,
-                                                               epsilon, min_pts,
+                                                               epsilon,
+                                                               min_pts,
                                                                rtree_root,
                                                                neighbors,
                                                                distances);
 
-                ordering[order_idx]   = closest_idx;
-                reach_vals[order_idx] = closest->reach_distance;
-                core_vals[order_idx]  = closest->core_distance;
-                order_idx++;
+                ordering[ordering_idx]   = closest_idx;
+                reach_vals[ordering_idx] = closest->reach_distance;
+                core_vals[ordering_idx]  = closest->core_distance;
+                ordering_idx++;
 
                 /*
                  * If the last point processed is also a core point, we find
@@ -292,7 +293,7 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
                  */
                 if (closest->core_distance != INFINITY)
                 {
-                    update_seeds(points, size, closest_idx, &seeds, epsilon,
+                    update_seeds(points, closest_idx, &seeds, epsilon,
                                  rtree_root, neighbors, distances);
                 }
             }
@@ -301,8 +302,8 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
 
     free(neighbors);
     free(distances);
-    heap_free(&seeds);
     free_rtree(rtree_root);
+    heap_free(&seeds);
 
     ClusterOrdering result;
     result.ordering = ordering;
@@ -312,15 +313,41 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
     return result;
 }
 
-void free_cluster_ordering(ClusterOrdering *res)
+void save_cluster_ordering_to_csv(const ClusterOrdering *co, int size,
+                                 const char *filename)
 {
-    if (!res) return;
+    if (!co || !co->ordering || !co->core || !co->reach)
+    {
+        fprintf(stderr, "save_cluster_ordering_to_csv error: Invalid "
+                        "input pointer.\n");
+        exit(EXIT_FAILURE);
+    }
 
-    free(res->ordering);
-    free(res->reach);
-    free(res->core);
+    FILE *file = fopen(filename, "w");
+    if (file == NULL)
+    {
+        fprintf(stderr, "save_cluster_ordering_to_csv error: Could not open "
+                        "file '%s' for writing.\n", filename);
+        exit(EXIT_FAILURE);
+    }
 
-    res->ordering = NULL;
-    res->reach    = NULL;
-    res->core     = NULL;
+    /* Headers */
+    fprintf(file, "ordering,core_distance,reachability_distance\n");
+
+    for (int i = 0; i < size; i++)
+    {
+        fprintf(file, "%d,%f,%f\n", co->ordering[i], co->core[i],
+                co->reach[i]);
+    }
+
+    fclose(file);
+}
+
+void free_cluster_ordering(ClusterOrdering *co)
+{
+    if (!co) return;
+
+    free(co->ordering);
+    free(co->reach);
+    free(co->core);
 }
