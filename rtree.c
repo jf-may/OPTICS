@@ -210,11 +210,12 @@ static RTreeNode *build_rtree_recursive(Point *points, int size, int dim,
  * Calculates the shortest squared distance from a point to an AABB.
  * Returns 0 if the point is physically inside the box along all dimensions.
  */
-double min_dist_sq_point_box(const Point *p, const BoundingBox *b)
+double min_dist_sq_point_box(const Point *p, const BoundingBox *b,
+                             const int dim)
 {
     double dist_sq = 0.0;
 
-    for (int i = 0; i < p->dim; i++)
+    for (int i = 0; i < dim; i++)
     {
         if (p->coords[i] < b->min_coords[i])
         {
@@ -241,7 +242,7 @@ double min_dist_sq_point_box(const Point *p, const BoundingBox *b)
  * Public wrapper to kick off the Top-Down bulk loading process.
  * Validates inputs and prepares the index array.
  */
-RTreeNode* build_rtree(Point *points, int size)
+RTreeNode* build_rtree(Point *points, const int size, const int dim)
 {
     if (!points || size < 1)
     {
@@ -249,8 +250,6 @@ RTreeNode* build_rtree(Point *points, int size)
                         "provided.\n");
         return NULL;
     }
-
-    int dim = points[0].dim;
 
     int *indices = (int *)malloc((size_t)size * sizeof(int));
     if (!indices)

@@ -13,8 +13,6 @@
  * coords:
  *     Pointer to the first coordinate of this point inside the contiguous
  *     coordinate storage block.
- * dim:
- *     Number of coordinates / feature dimensions.
  * orig_idx:
  *     Original position of this point in the input array.
  * processed:
@@ -29,7 +27,6 @@
 typedef struct
 {
     double *coords;
-    int     dim;
     int     orig_idx;
     bool    processed;
     double  core_distance;

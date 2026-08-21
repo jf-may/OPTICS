@@ -38,6 +38,9 @@
  * size : int
  *     Number of points.
  *
+ * dim : int
+ *     Number of coordinates / feature dimensions.
+ *
  * eps : double
  *     Maximum distance between two samples for one to be considered in the
  *     neighborhood of the other. Pass INFINITY to consider all points as
@@ -61,8 +64,8 @@
  *
  * [2] Scikit-learn OPTICS documentation and source.
  */
-ClusterOrdering run_optics(Point *points, const int size, const double eps,
-                           const int minPts);
+ClusterOrdering run_optics(Point *points, const int size, const int dim,
+                           const double eps, const int minPts);
 
 /*
  * save_cluster_ordering_to_csv

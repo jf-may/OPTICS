@@ -163,7 +163,6 @@ CsvData load_csv(const char *filename)
         if (cols == 0) continue;
 
         points[row].coords         = coords_row;
-        points[row].dim            = dim;
         points[row].orig_idx       = row;
         points[row].processed      = false;
         points[row].core_distance  = INFINITY;

@@ -46,9 +46,9 @@ static void sort_neighbors(const Point *points, int *neigh_ids,
  *
  * Returns the number of valid neighbors found.
  */
-static int get_neighbors(Point *points, const int p_idx, const double epsilon,
-                         const RTreeNode *root, int *neighbors_out,
-                         double *distances_out)
+static int get_neighbors(Point *points, const int p_idx, const int dim,
+                         const double epsilon, const RTreeNode *root,
+                         int *neighbors_out, double *distances_out)
 {
     if (!root) return 0;
 
@@ -79,7 +79,8 @@ static int get_neighbors(Point *points, const int p_idx, const double epsilon,
             for (int i = 0; i < node->count; i++)
             {
                 int node_p_idx = node->point_indices[i];
-                double dist_sq = euclidean_distance_sq(p, &points[node_p_idx]);
+                double dist_sq = euclidean_distance_sq(p, &points[node_p_idx],
+                                                       dim);
 
                 if (dist_sq <= eps_sq)
                 {
@@ -93,7 +94,8 @@ static int get_neighbors(Point *points, const int p_idx, const double epsilon,
         {
             for (int i = 0; i < node->count; i++)
             {
-                double box_dist_sq = min_dist_sq_point_box(p, &node->box[i]);
+                double box_dist_sq = min_dist_sq_point_box(p, &node->box[i],
+                                                           dim);
 
                 if (box_dist_sq <= eps_sq)
                 {
@@ -139,11 +141,11 @@ static int get_neighbors(Point *points, const int p_idx, const double epsilon,
  * Returns INFINITY if p has fewer than min_pts neighbors within epsilon.
  */
 static double compute_core_distance(Point *points, const int p_idx,
-                                    const double epsilon, const int min_pts,
-                                    const RTreeNode *root, int *neighbors_out,
-                                    double *distances_out)
+                                    const int dim, const double epsilon,
+                                    const int min_pts, const RTreeNode *root,
+                                    int *neighbors_out, double *distances_out)
 {
-    int count = get_neighbors(points, p_idx, epsilon, root, neighbors_out,
+    int count = get_neighbors(points, p_idx, dim, epsilon, root, neighbors_out,
                               distances_out);
     if (count < min_pts) return INFINITY;
     return distances_out[min_pts - 1];
@@ -157,7 +159,7 @@ static double compute_core_distance(Point *points, const int p_idx,
  * point. If this new reachability is smaller than its current one, we update
  * it and promote it in the priority queue.
  */
-static void update_seeds(Point *points, const int core_idx,
+static void update_seeds(Point *points, const int core_idx, const int dim,
                          BinaryHeap *seeds, const double epsilon,
                          const RTreeNode *root, int *neighbors,
                          double *distances)
@@ -165,7 +167,7 @@ static void update_seeds(Point *points, const int core_idx,
     Point *core      = &points[core_idx];
     double core_dist = core->core_distance;
 
-    int count = get_neighbors(points, core_idx, epsilon, root, neighbors,
+    int count = get_neighbors(points, core_idx, dim, epsilon, root, neighbors,
                               distances);
 
     for (int i = 0; i < count; i++)
@@ -194,8 +196,8 @@ static void update_seeds(Point *points, const int core_idx,
  * Public API
  * ========================================================================= */
 
-ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
-                           const int min_pts)
+ClusterOrdering run_optics(Point *points, const int size, const int dim,
+                           const double epsilon, const int min_pts)
 {
     if (!points || size < 1 || epsilon < 0.0 || min_pts < 1)
     {
@@ -213,7 +215,7 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
     }
 
     /* Build the spatial index (R-Tree) for O(n log n) neighborhood queries. */
-    RTreeNode *rtree_root = build_rtree(points, size);
+    RTreeNode *rtree_root = build_rtree(points, size, dim);
 
     /* Initialize the priority queue */
     BinaryHeap seeds;
@@ -251,9 +253,9 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
 
         Point *p         = &points[i];
         p->processed     = true;
-        p->core_distance = compute_core_distance(points, i, epsilon, min_pts,
-                                                 rtree_root, neighbors,
-                                                 distances);
+        p->core_distance = compute_core_distance(points, i, dim, epsilon,
+                                                 min_pts, rtree_root,
+                                                 neighbors, distances);
 
         ordering[ordering_idx]   = i;
         reach_vals[ordering_idx] = p->reach_distance;
@@ -263,8 +265,8 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
         /* If the point processed is a core point, we expand the cluster */
         if (p->core_distance != INFINITY)
         {
-            update_seeds(points, i, &seeds, epsilon, rtree_root, neighbors,
-                         distances);
+            update_seeds(points, i, dim, &seeds, epsilon, rtree_root,
+                         neighbors, distances);
 
             /* Exhaust the priority queue */
             while (!heap_is_empty(&seeds))
@@ -275,6 +277,7 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
                 closest->processed     = true;
                 closest->core_distance = compute_core_distance(points,
                                                                closest_idx,
+                                                               dim,
                                                                epsilon,
                                                                min_pts,
                                                                rtree_root,
@@ -293,7 +296,7 @@ ClusterOrdering run_optics(Point *points, const int size, const double epsilon,
                  */
                 if (closest->core_distance != INFINITY)
                 {
-                    update_seeds(points, closest_idx, &seeds, epsilon,
+                    update_seeds(points, closest_idx, dim, &seeds, epsilon,
                                  rtree_root, neighbors, distances);
                 }
             }

@@ -65,10 +65,11 @@ typedef struct RTreeNode
 } RTreeNode;
 
 /* Computes the minimum squared distance from a point to a bounding box */
-double min_dist_sq_point_box(const Point *p, const BoundingBox *b);
+double min_dist_sq_point_box(const Point *p, const BoundingBox *b,
+                             const int dim);
 
 /* Builds a perfectly balanced R-Tree using a Top-Down Bulk Loading strategy */
-RTreeNode* build_rtree(Point *points, int size);
+RTreeNode* build_rtree(Point *points, const int size, const int dim);
 
 /* Recursively frees the R-Tree and all associated memory blocks */
 void free_rtree(RTreeNode *node);

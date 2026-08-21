@@ -22,7 +22,8 @@ int main(int argc, char **argv)
     CsvData data = load_csv(input_filename);
     printf("Loaded %d points of dimension %d\n", data.n, data.dim);
 
-    ClusterOrdering results = run_optics(data.pts, data.n, epsilon, min_pts);
+    ClusterOrdering results = run_optics(data.pts, data.n, data.dim, epsilon,
+                                         min_pts);
 
     printf("\n=== Output CSV file: %s ===\n\n", output_filename);
     save_cluster_ordering_to_csv(&results, data.n, output_filename);

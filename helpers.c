@@ -2,8 +2,6 @@
 
 #include <math.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #define DIST_EPS 1e-12
 
@@ -15,17 +13,10 @@ bool less(const Point *points,
     return points[idx1].orig_idx < points[idx2].orig_idx;
 }
 
-double euclidean_distance_sq(const Point *a, const Point *b)
+double euclidean_distance_sq(const Point *a, const Point *b, const int dim)
 {
-    if (a->dim != b->dim)
-    {
-        fprintf(stderr, "euclidean_distance: dimensionality mismatch (%d vs %d)\n",
-                a->dim, b->dim);
-        exit(EXIT_FAILURE);
-    }
-
     double dist_sq = 0.0;
-    for (int i = 0; i < a->dim; i++)
+    for (int i = 0; i < dim; i++)
     {
         double diff = a->coords[i] - b->coords[i];
         dist_sq += diff * diff;
